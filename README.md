@@ -3,6 +3,13 @@
 
 A lightweight, zero-dependency, client-side tool to paste, view, and interact with JSON data. Instantly find and copy the path or value of any property in a clean, developer-friendly interface.
 
+## 🌐 Live Demo
+
+**Try it live now:**  [https://jsonpathviewer.manojlk.work/](https://jsonpathviewer.manojlk.work/ "null")
+
+A lightweight, zero-dependency, client-side tool to paste, view, and interact with JSON data. Instantly find and copy the path or value of any property in a clean, developer-friendly interface.
+
+
 ## ✨ Features
 
 -   **Interactive Tree View:** Navigate your JSON structure with a collapsible, easy-to-read tree.
