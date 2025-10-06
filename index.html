@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Path Finder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body, html {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            overflow: hidden; font-size: 16px; line-height: 1.6;
+        }
+        ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-track { background: #252526; }
+        ::-webkit-scrollbar-thumb { background: #4f4f4f; border-radius: 5px; }
+        .panel-header { background-color: #333333; padding: 8px 16px; border-bottom: 1px solid #444; height: 57px; }
+        .editor-container { display: flex; flex-grow: 1; }
+        .line-numbers { width: 50px; padding: 1rem; text-align: right; color: #858585; background-color: #252526; user-select: none; overflow: hidden; }
+        #json-input { flex-grow: 1; padding: 1rem; background-color: #1e1e1e; color: #d4d4d4; border: none; outline: none; resize: none; line-height: 1.6; }
+        .json-viewer-entry { cursor: pointer; border-radius: 4px; transition: background-color 0.15s; position: relative; padding: 0.375rem 0 0.375rem 1.5rem; border-bottom: 1px solid #333; }
+        .json-viewer-entry:hover { background-color: #2a2d2e; }
+        .json-viewer-entry.selected { background-color: transparent; box-shadow: inset 3px 0 0 0 #0b8372; }
+        .json-key { color: #9cdcfe; } .json-string { color: #ce9178; } .json-number { color: #b5cea8; } .json-boolean, .json-null { color: #569cd6; }
+        .collapser { position: absolute; left: 0.25rem; top: 0.6rem; transition: transform 0.1s ease-in-out; color: #c8c8c8; }
+        .collapsed > .collapser { transform: rotate(-90deg); } .collapsed > .json-children { display: none; }
+        .btn { background-color: #4f4f4f; hover:bg-gray-500; color: white; px-3 py-1 rounded; }
+    </style>
+</head>
+<body class="flex flex-col h-screen bg-[#1e1e1e] text-gray-200">
+    <div id="app-container" class="flex flex-grow w-screen overflow-hidden">
+        <!-- Left Panel: JSON Input -->
+        <div id="left-panel" class="flex flex-col h-full w-2/5 border-r border-gray-700">
+            <div class="panel-header flex items-center justify-between flex-shrink-0">
+                <h1 class="text-lg font-semibold text-gray-200">JSON PATH VIEWER</h1>
+                <div class="space-x-2">
+                    <button data-action="sample" class="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded">Sample</button>
+                    <button data-action="beautify" class="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded">Beautify</button>
+                    <button data-action="minify" class="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded">Minify</button>
+                    <button data-action="clear" class="bg-red-700 hover:bg-red-600 px-3 py-1 rounded">Clear</button>
+                </div>
+            </div>
+            <div class="relative flex-grow">
+                <div class="editor-container absolute inset-0 flex overflow-hidden">
+                    <div id="line-numbers" class="line-numbers">1</div><textarea id="json-input" wrap="off" spellcheck="false"></textarea>
+                </div>
+            </div>
+        </div>
+        <!-- Right Panel: JSON Viewer -->
+        <div id="right-panel" class="flex flex-col h-full w-3/5">
+            <div class="panel-header flex items-center space-x-4 flex-shrink-0">
+                <div class="space-x-2">
+                    <button data-action="expand-all" class="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded">Expand All</button>
+                    <button data-action="collapse-all" class="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded">Collapse All</button>
+                </div>
+                <div class="flex items-center flex-grow"><label for="path-output" class="font-semibold mr-2">Path:</label><input id="path-output" readonly class="flex-grow bg-[#2a2d2e] text-gray-200 rounded-l p-1.5 focus:outline-none" value="$."><button data-action="copy-path" id="copy-path-btn" class="bg-[#0b8372] hover:bg-[#096c5e] text-white font-semibold px-4 py-1.5 rounded-r">Copy</button></div>
+                <div class="flex items-center flex-grow"><label for="value-output" class="font-semibold mr-2">Value:</label><input id="value-output" readonly class="flex-grow bg-[#2a2d2e] text-gray-200 rounded-l p-1.5 focus:outline-none"><button data-action="copy-value" id="copy-value-btn" class="bg-[#0b8372] hover:bg-[#096c5e] text-white font-semibold px-4 py-1.5 rounded-r">Copy</button></div>
+            </div>
+            <div class="relative flex-grow">
+                <div id="json-viewer" class="absolute inset-0 p-4 overflow-auto"></div>
+            </div>
+        </div>
+    </div>
+    <!-- Footer -->
+    <footer class="bg-[#333333] border-t border-[#444] p-2 text-sm text-gray-400 flex justify-between items-center flex-shrink-0">
+        <a href="https://manojlk.work" target="_blank" rel="noopener noreferrer" class="hover:text-white">Built with AI by Manoj lk</a>
+        <a href="https://github.com/manoj-lk-code/jsonpath" target="_blank" rel="noopener noreferrer" class="hover:text-white">View this on Github</a>
+    </footer>
+    <script>
+        const $ = id => document.getElementById(id);
+        const [jsonInput, lineNumbers, jsonViewer, pathOutput, valueOutput, copyPathBtn, copyValueBtn] =
+            ['json-input', 'line-numbers', 'json-viewer', 'path-output', 'value-output', 'copy-path-btn', 'copy-value-btn'].map($);
+        let selectedValue = null;
+        const initialJson = [{"conceptName":"Starlight Montage","targetAudience":"Children 8-18","setting":{"background":"shimmering, star-speckled blue"},"moodDescription":"Awe-inspiring"},{"conceptName":"Backyard Triumph","isActive":true,"score":100,"tags":["sports"]}];
+        const renderJsonTree = (data, path = '$.') => {
+            if (data === null || typeof data !== 'object') return '';
+            const isArray = Array.isArray(data);
+            const typeClassMap = { string: 'json-string', number: 'json-number', boolean: 'json-boolean' };
+            return Object.keys(data).map(key => {
+                const value = data[key], currentPath = isArray ? `${path}[${key}]` : `${path}['${key.replace(/'/g, "\\'")}']`;
+                const isObject = value !== null && typeof value === 'object', type = typeof value;
+                const keyHtml = isArray ? `<span class="text-gray-500">${key}:</span>&nbsp;` : `<span class="json-key">'${key}':</span>&nbsp;`;
+                const valueHtml = isObject ? `<div class="json-children pl-4">${renderJsonTree(value, currentPath)}</div>`
+                    : `<span class="${typeClassMap[type] || 'json-null'}">${type === 'string' ? `"${value}"` : String(value)}</span>`;
+                return `<div class="json-viewer-entry ${isObject ? 'collapsible collapsed' : ''}" data-path="${currentPath}" data-value='${JSON.stringify(value).replace(/'/g, "&apos;")}'><svg class="collapser w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>${keyHtml}${valueHtml}</div>`;
+            }).join('');
+        };
+        const updateUI = () => {
+            const text = jsonInput.value;
+            lineNumbers.innerHTML = text.split('\n').map((_, i) => i + 1).join('\n');
+            try { jsonViewer.innerHTML = text.trim() ? renderJsonTree(JSON.parse(text)) : ''; } 
+            catch (e) { jsonViewer.innerHTML = `<div class="p-4 text-red-400"><b>Parse Error:</b> ${e.message}</div>`; }
+        };
+        const copyHandler = (button, text) => {
+            const ta = document.createElement('textarea');
+            ta.style.position = 'fixed'; ta.value = text; document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            try {
+                document.execCommand('copy');
+                const originalText = button.textContent;
+                button.textContent = 'Copied!'; setTimeout(() => button.textContent = originalText, 1500);
+            } catch (err) { /* silent fail */ }
+            document.body.removeChild(ta);
+        };
+        document.addEventListener('click', e => {
+            const actionTarget = e.target.closest('[data-action]');
+            if (actionTarget) {
+                const action = actionTarget.dataset.action;
+                if (action === 'sample') { jsonInput.value = JSON.stringify(initialJson, null, 2); updateUI(); }
+                if (action === 'beautify' || action === 'minify') { 
+                    try { 
+                        jsonInput.value = JSON.stringify(JSON.parse(jsonInput.value), null, action === 'beautify' ? 2 : undefined); 
+                        updateUI(); 
+                        jsonInput.scrollTop = 0;
+                        jsonInput.scrollLeft = 0;
+                    } catch (e) {} 
+                }
+                if (action === 'clear') { jsonInput.value = ''; updateUI(); }
+                if (action === 'expand-all') document.querySelectorAll('.collapsible').forEach(el => el.classList.remove('collapsed'));
+                if (action === 'collapse-all') document.querySelectorAll('.collapsible').forEach(el => el.classList.add('collapsed'));
+                if (action === 'copy-path') copyHandler(copyPathBtn, pathOutput.value);
+                if (action === 'copy-value') copyHandler(copyValueBtn, (typeof selectedValue === 'object' && selectedValue !== null) ? JSON.stringify(selectedValue) : String(selectedValue ?? ''));
+            }
+            const entry = e.target.closest('.json-viewer-entry');
+            if (entry) {
+                if (entry.classList.contains('collapsible')) entry.classList.toggle('collapsed');
+                document.querySelector('.json-viewer-entry.selected')?.classList.remove('selected');
+                entry.classList.add('selected');
+                pathOutput.value = entry.dataset.path;
+                selectedValue = JSON.parse(entry.dataset.value);
+                valueOutput.value = (typeof selectedValue === 'object' && selectedValue !== null) ? JSON.stringify(selectedValue) : String(selectedValue ?? 'null');
+            }
+        });
+        jsonInput.addEventListener('input', () => {
+            updateUI();
+            localStorage.setItem('savedJson', jsonInput.value);
+        });
+        jsonInput.addEventListener('scroll', () => { lineNumbers.scrollTop = jsonInput.scrollTop; });
+        jsonInput.addEventListener('paste', () => {
+             // Beautify after paste event completes
+            setTimeout(() => document.querySelector('[data-action="beautify"]').click(), 0);
+        });
+        window.addEventListener('load', () => {
+            const savedJson = localStorage.getItem('savedJson');
+            jsonInput.value = savedJson !== null ? savedJson : JSON.stringify(initialJson, null, 2);
+            // Beautify on load to ensure stored JSON is clean
+            setTimeout(() => document.querySelector('[data-action="beautify"]').click(), 0);
+        });
+    </script>
+</body>
+</html>
+
+
